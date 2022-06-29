@@ -1,0 +1,15 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres
+    ports:
+      - "5432:5432"
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: analytics-db
+    volumes:
+      - postgres:/var/lib/postgresql/data
+volumes:
+  postgres: ~
