@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const config = {
-  httpPort: process.env.HTTP_PORT || 9191,
+  httpPort: process.env.HTTP_PORT || 3000,
   apiKey: process.env.API_KEY,
   appEnv: process.env.APP_ENV,
   aws: {
