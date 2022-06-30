@@ -6,7 +6,6 @@ const {
 const {
   aws: {
     kinesis: kinesisConfig,
-    firehose: firehoseConfig,
   },
 } = require('../../../configuration');
 const logging = require('../../../common/logging');
@@ -15,14 +14,9 @@ module.exports.init = function init() {
   const kinesis = new AWS.Kinesis({
     region: kinesisConfig.region,
   });
-  const firehose = new AWS.Firehose({
-    region: firehoseConfig.region,
-  });
   const putRecord = promisify(kinesis.putRecord.bind(kinesis));
   const putRecords = promisify(kinesis.putRecords.bind(kinesis));
   const describeStream = promisify(kinesis.describeStream.bind(kinesis));
-  const putRecordToDeliveryStream = promisify(firehose.putRecord.bind(firehose));
-  const putRecordsToDeliveryStream = promisify(firehose.putRecordBatch.bind(firehose));
   const isAbleToWriteToStream = async ({
     streamName,
   }) => {
@@ -45,8 +39,6 @@ module.exports.init = function init() {
   return {
     putRecordToStream: putRecord,
     putRecordsToStream: putRecords,
-    putRecordToDeliveryStream,
-    putRecordsToDeliveryStream,
     describeStream,
     isAbleToWriteToStream,
   };

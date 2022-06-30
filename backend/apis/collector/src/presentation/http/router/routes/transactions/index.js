@@ -1,11 +1,6 @@
 const express = require('express');
 const asyncWrapper = require('@dimosbotsaris/express-async-handler');
 const authenticationMiddleware = require('../../middleware/authentication');
-const {
-  accelInputValidationRules,
-  validate,
-  isValidTrackingReferralCode,
-} = require('../../middleware/endpointValidator');
 const logging = require('../../../../../common/logging');
 
 const authentication = authenticationMiddleware();
@@ -17,11 +12,9 @@ function init({
 }) {
   router.post(
     '/',
-    accelInputValidationRules(),
-    validate,
-    (...args) => isValidTrackingReferralCode(...args),
+    // (...args) => isValidTrackingReferralCode(...args),
     asyncWrapper(async (req, res) => {
-      logging.info('Enter watch handler to store transactions via stream');
+      logging.info('Enter handler to store transactions via stream');
       const data = {
         transactions: req.body || [],
         type: 'transactions',

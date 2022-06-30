@@ -7,8 +7,8 @@ const config = {
   aws: {
     accessKeyId: process.env.AWS_ACCESS_KEY,
     secretAccessKey: process.env.AWS_SECRET_KEY,
+    region: process.env.AWS_REGION,
     kinesis: {
-      region: process.env.AWS_KINESIS_REGION,
       dataStream: {
         streams: {
           TRANSACTIONS_STREAM_NAME: process.env.AWS_KINESIS_TRANSACTIONS_STREAM_NAME,
