@@ -1,0 +1,31 @@
+{
+  "name": "anomalydetector",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Dimos Botsaris <botsaris.d@gmail.com>",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.1164.0",
+    "bignumber.js": "^9.0.2",
+    "dotenv": "^16.0.1",
+    "moment": "^2.29.3",
+    "pg": "^8.7.3",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.21.2"
+  },
+  "devDependencies": {
+    "chai": "^4.3.6",
+    "coveralls": "^3.1.1",
+    "eslint": "^8.15.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.26.0",
+    "mocha": "^10.0.0",
+    "nodemon": "^2.0.16",
+    "sinon": "^14.0.0",
+    "supertest": "^6.2.3"
+  }
+}

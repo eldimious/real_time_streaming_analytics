@@ -5,6 +5,11 @@ const {
   hasStreamFailedRecords,
   chuckArrayIntoSmallerArrays,
 } = require('../../common/utils');
+const {
+  aws: {
+    kinesis: kinesisConfig,
+  },
+} = require('../../configuration');
 
 function init({
   streamingRepository,
@@ -20,8 +25,9 @@ function init({
   }
 
   async function handleTransactionsStream(transactions) {
+    logging.info('Trying to add transactions records to stream', transactions);
     await streamingRepository.isAbleToWriteToStream({
-      streamName: 'TRANSACTIONS_STREAM',
+      streamName: kinesisConfig.dataStream.streams.TRANSACTIONS_STREAM_NAME,
     });
     const trasactionsIntoArrays = chuckArrayIntoSmallerArrays({
       inputArr: transactions,
@@ -41,7 +47,7 @@ function init({
       }
       const res = await streamingRepository.putRecordsToStream({
         Records: records,
-        StreamName: 'TRANSACTIONS_STREAM',
+        StreamName: kinesisConfig.dataStream.streams.TRANSACTIONS_STREAM_NAME,
       }).catch((error) => {
         logging.error('Error when put transactions records to kinesis', error);
         return undefined;
@@ -50,7 +56,6 @@ function init({
         logging.log('hasStreamFailedRecords accel', res.FailedRecordCount);
         // const msg = `FailedRecordCount for transactions is: ${res.FailedRecordCount}`;
       }
-      // console.log('accel res', res);
       return res;
     }, { concurrency: CONCURRENCY_LIMIT });
   }
@@ -58,7 +63,7 @@ function init({
   async function collectEvents(data) {
     switch (data.type) {
       case 'transactions': {
-        const results = await handleTransactionsStream(data.transaction)
+        const results = await handleTransactionsStream(data.transactions)
           // .then((res) => {
           //   console.log(`Res when put transactions to kinesis`, res);
           // })
