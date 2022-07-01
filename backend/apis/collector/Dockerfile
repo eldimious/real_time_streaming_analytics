@@ -20,7 +20,7 @@ WORKDIR /home/$user/src
 
 COPY --from=builder /build ./
 
-EXPOSE 8080
+EXPOSE $PORT
 
 ENV NODE_ENV production
 

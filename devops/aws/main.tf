@@ -167,7 +167,7 @@ module "private_database_sg" {
 }
 
 module "private_vpc_sg" {
-  source                   = "../common/modules/security"
+  source                   = "./common/modules/security"
   create_vpc               = var.create_vpc
   create_sg                = true
   sg_name                  = "private-lambda-security-group"
@@ -512,7 +512,7 @@ module "detect_anomaly_transactions" {
       filter_criteria = {
         pattern = jsonencode({
           data : {
-            amount : [{ numeric : [">", 1000] }]
+            amount : [{ numeric : [">=", 1000] }]
           }
         })
       }
@@ -522,7 +522,7 @@ module "detect_anomaly_transactions" {
   allowed_triggers = {
     kinesis = {
       principal  = "kinesis.amazonaws.com"
-      source_arn = aws_kinesis_stream.this.arn
+      source_arn = aws_kinesis_stream.transactions_stream.arn
     }
   }
 
