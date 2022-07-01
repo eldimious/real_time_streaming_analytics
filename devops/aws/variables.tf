@@ -172,7 +172,7 @@ variable "collector_api_desired_count" {
 
 variable "collector_api_max_count" {
   description = "Max number of collector docker containers to run"
-  default     = 4
+  default     = 6
 }
 
 variable "collector_api_health_check_path" {
@@ -237,4 +237,16 @@ variable "collector_monitoring_role_name" {
   description = "collector monitoring role name"
   type        = string
   default     = "collectorDatabaseMonitoringRole"
+}
+
+variable "kinesis_stream_name" {
+  description = "kinesis stream name for transactions"
+  type        = string
+  default     = "transactions_stream"
+}
+
+variable "kinesis_firehose_delivery_stream_name" {
+  description = "kinesis firehose delivery stream name for transactions"
+  type        = string
+  default     = "transactions_s3_delivery_stream"
 }

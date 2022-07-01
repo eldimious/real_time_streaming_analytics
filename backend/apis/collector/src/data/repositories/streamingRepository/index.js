@@ -6,13 +6,17 @@ const {
 const {
   aws: {
     kinesis: kinesisConfig,
+    region,
   },
 } = require('../../../configuration');
 const logging = require('../../../common/logging');
 
+AWS.config.credentials = new AWS.SharedIniFileCredentials({profile: 'default'});
+
 module.exports.init = function init() {
+  console.log('kinesisConfig.region', region);
   const kinesis = new AWS.Kinesis({
-    region: kinesisConfig.region,
+    region,
   });
   const putRecord = promisify(kinesis.putRecord.bind(kinesis));
   const putRecords = promisify(kinesis.putRecords.bind(kinesis));

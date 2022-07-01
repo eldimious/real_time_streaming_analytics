@@ -1,15 +1,12 @@
 version: '3.9'
 services:
-  postgres:
-    image: postgres
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: collector-api
     ports:
-      - "5432:5432"
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: analytics-db
+      - "3000:3000"
     volumes:
-      - postgres:/var/lib/postgresql/data
-volumes:
-  postgres: ~
+      - .:/home/nodejs/src
+    env_file: .env

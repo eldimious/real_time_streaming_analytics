@@ -277,7 +277,7 @@ resource "aws_iam_role_policy" "collector_password_policy_secretsmanager" {
         "Effect": "Allow",
         "Resource": [
           "${aws_secretsmanager_secret.collector_database_username_secret.arn}",
-          "${aws_secretsmanager_secret.collector_database_password_secret.arn}",
+          "${aws_secretsmanager_secret.collector_database_password_secret.arn}"
         ]
       }
     ]
@@ -331,26 +331,16 @@ module "ecs_collector_api_fargate" {
   service_task_family                     = var.collector_api_task_family
   service_enviroment_variables = [
     {
-      "name" : "POSTGRES_HOST",
-      "value" : "${tostring(module.collector_database.db_instance_address)}",
+      "name" : "AWS_REGION",
+      "value" : "${tostring(var.aws_region)}",
     },
     {
-      "name" : "POSTGRES_DB",
-      "value" : "${tostring(module.collector_database.db_instance_name)}",
+      "name" : "AWS_KINESIS_TRANSACTIONS_STREAM_NAME",
+      "value" : "${tostring(var.kinesis_stream_name)}",
     },
     {
-      "name" : "POSTGRES_PORT",
-      "value" : "${tostring(module.collector_database.db_instance_port)}",
-    }
-  ]
-  service_secrets_variables = [
-    {
-      "name" : "POSTGRES_USER",
-      "valueFrom" : "${aws_secretsmanager_secret.collector_database_username_secret.arn}",
-    },
-    {
-      "name" : "POSTGRES_PASSWORD",
-      "valueFrom" : "${aws_secretsmanager_secret.collector_database_password_secret.arn}",
+      "name" : "AWS_KINESIS_FIREHOSE_TRANSACTIONS_DELIVERY_STREAM_NAME",
+      "value" : "${tostring(var.kinesis_firehose_delivery_stream_name)}"
     }
   ]
   service_health_check_path  = var.collector_api_health_check_path
@@ -403,27 +393,15 @@ resource "aws_s3_bucket_acl" "transactions_bucket_acl" {
 ################################################################################
 ################################################################################
 resource "aws_kinesis_stream" "transactions_stream" {
-  name             = "transactions_stream"
+  name             = var.kinesis_stream_name
   retention_period = 168
 
   shard_level_metrics = [
     "IncomingBytes",
+    "IteratorAgeMilliseconds",
     "OutgoingBytes",
-    "GetRecords.Bytes",
-    "GetRecords.IteratorAgeMilliseconds",
-    "GetRecords.Latency",
-    "GetRecords.Records",
-    "GetRecords.Success",
+    "OutgoingRecords",
     "IncomingRecords",
-    "PutRecord.Bytes",
-    "PutRecord.Latency",
-    "PutRecord.Success",
-    "PutRecords.Bytes",
-    "PutRecords.Success",
-    "PutRecords.SuccessfulRecords",
-    "PutRecords.TotalRecords",
-    "PutRecords.FailedRecords",
-    "PutRecords.ThrottledRecords",
     "ReadProvisionedThroughputExceeded",
     "WriteProvisionedThroughputExceeded"
   ]
@@ -436,12 +414,18 @@ resource "aws_kinesis_stream" "transactions_stream" {
 }
 
 resource "aws_kinesis_firehose_delivery_stream" "transactions_s3_stream" {
-  name        = "transactions_s3_delivery_stream"
+  name        = var.kinesis_firehose_delivery_stream_name
   destination = "extended_s3"
 
+  kinesis_source_configuration {
+    kinesis_stream_arn = aws_kinesis_stream.transactions_stream.arn
+    role_arn = aws_iam_role.firehose_role.arn
+  }
   extended_s3_configuration {
-    role_arn   = aws_iam_role.firehose_role.arn
-    bucket_arn = aws_s3_bucket.transactions_bucket.arn
+    buffer_interval = 60
+    buffer_size     = 1
+    role_arn        = aws_iam_role.firehose_role.arn
+    bucket_arn      = aws_s3_bucket.transactions_bucket.arn
 
     # processing_configuration {
     #   enabled = "true"
@@ -458,6 +442,7 @@ resource "aws_kinesis_firehose_delivery_stream" "transactions_s3_stream" {
   }
 }
 
+#Define a policy which will allow Kinesis Data Firehose to Assume an IAM Role
 resource "aws_iam_role" "firehose_role" {
   name = "transactions_firehose_role"
 
@@ -476,6 +461,57 @@ resource "aws_iam_role" "firehose_role" {
   ]
 }
 EOF
+}
+
+#Define a policy which will allow Kinesis Data Firehose to access your S3 bucket
+data "aws_iam_policy_document" "kinesis_firehose_access_bucket_assume_policy" {
+  statement {
+    sid    = ""
+    effect = "Allow"
+    actions = [
+      "s3:AbortMultipartUpload",
+      "s3:GetBucketLocation",
+      "s3:GetObject",
+      "s3:ListBucket",
+      "s3:ListBucketMultipartUploads",
+      "s3:PutObject"
+    ]
+    resources = [
+      aws_s3_bucket.transactions_bucket.arn,
+      "${aws_s3_bucket.transactions_bucket.arn}/*",
+    ]
+  }
+}
+
+#attach s3 bucket access policy
+resource "aws_iam_role_policy" "kinesis_firehose_access_bucket_policy" {
+  name   = "kinesis_firehose_access_bucket_policy"
+  role   = aws_iam_role.firehose_role.name
+  policy = data.aws_iam_policy_document.kinesis_firehose_access_bucket_assume_policy.json
+}
+
+# Define a policy which will allow Kinesis Data Firehose to access your S3 bucket
+data "aws_iam_policy_document" "kinesis_firehose_access_data_stream_assume_policy" {
+  statement {
+    sid    = ""
+    effect = "Allow"
+    actions = [
+      "kinesis:DescribeStream",
+      "kinesis:GetShardIterator",
+      "kinesis:GetRecords",
+      "kinesis:ListShards"
+    ]
+    resources = [
+      aws_kinesis_stream.transactions_stream.arn
+    ]
+  }
+}
+
+# attach data stream access policy
+resource "aws_iam_role_policy" "kinesis_firehose_access_data_stream_policy" {
+  name   = "kinesis_firehose_access_data_stream_policy"
+  role   = aws_iam_role.firehose_role.name
+  policy = data.aws_iam_policy_document.kinesis_firehose_access_data_stream_assume_policy.json
 }
 
 ################################################################################
