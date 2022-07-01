@@ -21,7 +21,7 @@ app.use(cors());
 module.exports.init = (services) => {
   app.use(logging.requestLogger);
   app.use(express.static(path.join(__dirname, 'public')));
-  app.get('/collector/healthCheck', ((req, res) => res.status(200).send('OK')));
+  app.get('/collector/health-check', ((req, res) => res.status(200).send('OK')));
   app.use('/collector/transactions', transactionsRouter.init(services));
   app.use(logging.errorLogger);
   app.use(errorHandler({ trace: true }));
