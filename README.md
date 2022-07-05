@@ -31,8 +31,14 @@ You can take a look at API's endpoints navigated to ${api_gateway_url} output fr
 POST ${api_gateway_url}/collector/transactions
 ```
 
+Headers:
+```json
+{
+    "x-api-key": "${api_gateway_api_key}"
+}
+
 Body Params:
-```shell
+```json
 {
     "records": [
         {
