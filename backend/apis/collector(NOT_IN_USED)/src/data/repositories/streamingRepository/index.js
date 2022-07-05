@@ -7,11 +7,13 @@ const {
   aws: {
     kinesis: kinesisConfig,
     region,
+    accessKeyId,
+    secretAccessKey,
   },
 } = require('../../../configuration');
 const logging = require('../../../common/logging');
 
-AWS.config.credentials = new AWS.SharedIniFileCredentials({profile: 'default'});
+AWS.config.credentials = new AWS.SharedIniFileCredentials({ profile: 'default' });
 
 module.exports.init = function init() {
   console.log('kinesisConfig.region', region);

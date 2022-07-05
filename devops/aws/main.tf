@@ -11,6 +11,20 @@ provider "aws" {
   region                  = var.aws_region
 }
 
+data "aws_partition" "current" {}
+data "aws_region" "current" {}
+
+# Sendgrid Secrets
+resource "aws_secretsmanager_secret" "sendgrid_apikey_secret_manager" {
+  name                    = "sendgrid_x_api_key"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "sendgrid_apikey_secret_version" {
+  secret_id     = aws_secretsmanager_secret.sendgrid_apikey_secret_manager.id
+  secret_string = var.sendgrid_apikey
+}
+
 ################################################################################
 ################################################################################
 ################################################################################
@@ -26,53 +40,15 @@ module "networking" {
   enable_nat_gateway   = var.enable_nat_gateway
   region               = var.aws_region
   vpc_name             = var.vpc_name
+  project              = var.project
   cidr_block           = var.cidr_block
   availability_zones   = var.availability_zones
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
+  environment          = var.environment
 }
 
-################################################################################
-################################################################################
-################################################################################
-# IAM CONFIGURATION
-################################################################################
-################################################################################
-################################################################################
-
-################################################################################
-# ECS Tasks Execution IAM
-################################################################################
-# ECS task execution role data
-data "aws_iam_policy_document" "ecs_task_execution_role" {
-  version = "2012-10-17"
-  statement {
-    sid     = ""
-    effect  = "Allow"
-    actions = ["sts:AssumeRole"]
-
-    principals {
-      type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
-    }
-  }
-}
-
-# ECS task execution role
-resource "aws_iam_role" "ecs_task_execution_role" {
-  name               = var.ecs_task_execution_role_name
-  assume_role_policy = data.aws_iam_policy_document.ecs_task_execution_role.json
-}
-
-# ECS task execution role policy attachment
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_role" {
-  role       = aws_iam_role.ecs_task_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-################################################################################
 # VPC Flow Logs IAM
-################################################################################
 resource "aws_iam_role" "vpc_flow_cloudwatch_logs_role" {
   name               = "collector-vpc-flow-cloudwatch-logs-role"
   assume_role_policy = file("./common/templates/policies/vpc_flow_cloudwatch_logs_role.json.tpl")
@@ -85,7 +61,6 @@ resource "aws_iam_role_policy" "vpc_flow_cloudwatch_logs_policy" {
 }
 
 # VPC Flows
-################################################################################
 # Provides a VPC/Subnet/ENI Flow Log to capture IP traffic for a specific network interface, 
 # subnet, or VPC. Logs are sent to a CloudWatch Log Group or a S3 Bucket.
 # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/flow_log
@@ -108,45 +83,6 @@ resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
 ################################################################################
 ################################################################################
 ################################################################################
-module "alb_sg" {
-  source                   = "./common/modules/security"
-  create_vpc               = var.create_vpc
-  create_sg                = true
-  sg_name                  = "load-balancer-security-group"
-  description              = "controls access to the ALB"
-  rule_ingress_description = "controls access to the ALB"
-  rule_egress_description  = "allow all outbound"
-  vpc_id                   = module.networking.vpc_id
-  ingress_cidr_blocks      = ["0.0.0.0/0"]
-  ingress_from_port        = 80
-  ingress_to_port          = 80
-  ingress_protocol         = "tcp"
-  egress_cidr_blocks       = ["0.0.0.0/0"]
-  egress_from_port         = 0
-  egress_to_port           = 0
-  egress_protocol          = "-1"
-}
-
-module "ecs_tasks_sg" {
-  source                           = "./common/modules/security"
-  create_vpc                       = var.create_vpc
-  create_sg                        = true
-  sg_name                          = "ecs-tasks-security-group"
-  description                      = "controls access to the ECS tasks"
-  rule_ingress_description         = "allow inbound access from the ALB only"
-  rule_egress_description          = "allow all outbound"
-  vpc_id                           = module.networking.vpc_id
-  ingress_cidr_blocks              = null
-  ingress_from_port                = 0
-  ingress_to_port                  = 0
-  ingress_protocol                 = "-1"
-  ingress_source_security_group_id = module.alb_sg.security_group_id
-  egress_cidr_blocks               = ["0.0.0.0/0"]
-  egress_from_port                 = 0
-  egress_to_port                   = 0
-  egress_protocol                  = "-1"
-}
-
 module "private_database_sg" {
   source                   = "./common/modules/security"
   create_vpc               = var.create_vpc
@@ -185,55 +121,6 @@ module "private_vpc_sg" {
   egress_protocol          = "-1"
 }
 
-################################################################################
-################################################################################
-################################################################################
-# LOAD BALANCER CONFIGURATION
-################################################################################
-################################################################################
-################################################################################
-module "public_alb" {
-  source             = "./common/modules/alb"
-  create_alb         = var.create_alb
-  load_balancer_type = "application"
-  alb_name           = "main-ecs-lb"
-  internal           = false
-  vpc_id             = module.networking.vpc_id
-  security_groups    = [module.alb_sg.security_group_id]
-  subnet_ids         = module.networking.public_subnet_ids
-  http_tcp_listeners = [
-    {
-      port        = 80
-      protocol    = "HTTP"
-      action_type = "fixed-response"
-      fixed_response = {
-        content_type = "text/plain"
-        message_body = "Resource not found"
-        status_code  = "404"
-      }
-    }
-  ]
-}
-
-################################################################################
-################################################################################
-################################################################################
-# ECS CLUSTER CONFIGURATION
-################################################################################
-################################################################################
-################################################################################
-module "ecs_cluster" {
-  source                   = "./common/modules/ecs_cluster"
-  project                  = var.project
-  create_capacity_provider = false
-}
-
-resource "aws_service_discovery_private_dns_namespace" "segment" {
-  name        = "discovery.com"
-  description = "Service discovery for backends"
-  vpc         = module.networking.vpc_id
-}
-
 
 ################################################################################
 ################################################################################
@@ -244,45 +131,24 @@ resource "aws_service_discovery_private_dns_namespace" "segment" {
 ################################################################################
 # Databases Secrets
 # https://www.sufle.io/blog/keeping-secrets-as-secret-on-amazon-ecs-using-terraform
-resource "aws_secretsmanager_secret" "collector_database_password_secret" {
-  name = "collector_database_master_password"
+resource "aws_secretsmanager_secret" "db_collector_password_secret_manager" {
+  name                    = "db_collector_master_password"
+  recovery_window_in_days = 0
 }
 
-resource "aws_secretsmanager_secret_version" "collector_database_password_secret_version" {
-  secret_id     = aws_secretsmanager_secret.collector_database_password_secret.id
+resource "aws_secretsmanager_secret_version" "db_collector_password_secret_version" {
+  secret_id     = aws_secretsmanager_secret.db_collector_password_secret_manager.id
   secret_string = var.collector_database_password
 }
 
-resource "aws_secretsmanager_secret" "collector_database_username_secret" {
-  name = "collector_database_master_username"
+resource "aws_secretsmanager_secret" "db_collector_username_secret_manager" {
+  name                    = "db_collector_master_username"
+  recovery_window_in_days = 0
 }
 
-resource "aws_secretsmanager_secret_version" "collector_database_username_secret_version" {
-  secret_id     = aws_secretsmanager_secret.collector_database_username_secret.id
+resource "aws_secretsmanager_secret_version" "db_collector_username_secret_version" {
+  secret_id     = aws_secretsmanager_secret.db_collector_username_secret_manager.id
   secret_string = var.collector_database_username
-}
-
-resource "aws_iam_role_policy" "collector_password_policy_secretsmanager" {
-  name = "collector-password-policy-secretsmanager"
-  role = aws_iam_role.ecs_task_execution_role.id
-
-  policy = <<-EOF
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Action": [
-          "secretsmanager:GetSecretValue"
-        ],
-        "Effect": "Allow",
-        "Resource": [
-          "${aws_secretsmanager_secret.collector_database_username_secret.arn}",
-          "${aws_secretsmanager_secret.collector_database_password_secret.arn}"
-        ]
-      }
-    ]
-  }
-  EOF
 }
 
 # collector Database
@@ -294,78 +160,6 @@ module "collector_database" {
   subnet_ids           = module.networking.private_subnet_ids
   security_group_ids   = [module.private_database_sg.security_group_id]
   monitoring_role_name = var.collector_monitoring_role_name
-}
-
-
-################################################################################
-################################################################################
-################################################################################
-# ECS FARGATE CONFIGURATION
-################################################################################
-################################################################################
-################################################################################
-# collector API ECS Service
-module "ecs_collector_api_fargate" {
-  source                                  = "./common/modules/ecs"
-  aws_region                              = var.aws_region
-  vpc_id                                  = module.networking.vpc_id
-  cluster_id                              = module.ecs_cluster.cluster_id
-  cluster_name                            = module.ecs_cluster.cluster_name
-  has_discovery                           = true
-  dns_namespace_id                        = aws_service_discovery_private_dns_namespace.segment.id
-  service_security_groups_ids             = [module.ecs_tasks_sg.security_group_id]
-  subnet_ids                              = module.networking.private_subnet_ids
-  assign_public_ip                        = false
-  iam_role_ecs_task_execution_role        = aws_iam_role.ecs_task_execution_role
-  iam_role_policy_ecs_task_execution_role = aws_iam_role_policy_attachment.ecs_task_execution_role
-  logs_retention_in_days                  = 30
-  fargate_cpu                             = var.fargate_cpu
-  fargate_memory                          = var.fargate_memory
-  health_check_grace_period_seconds       = var.health_check_grace_period_seconds
-  service_name                            = var.collector_api_name
-  service_image                           = var.collector_api_image
-  service_aws_logs_group                  = var.collector_api_aws_logs_group
-  service_port                            = var.collector_api_port
-  service_desired_count                   = var.collector_api_desired_count
-  service_max_count                       = var.collector_api_max_count
-  service_task_family                     = var.collector_api_task_family
-  service_enviroment_variables = [
-    {
-      "name" : "AWS_REGION",
-      "value" : "${tostring(var.aws_region)}",
-    },
-    {
-      "name" : "AWS_KINESIS_TRANSACTIONS_STREAM_NAME",
-      "value" : "${tostring(var.kinesis_stream_name)}",
-    },
-    {
-      "name" : "AWS_KINESIS_FIREHOSE_TRANSACTIONS_DELIVERY_STREAM_NAME",
-      "value" : "${tostring(var.kinesis_firehose_delivery_stream_name)}"
-    }
-  ]
-  service_health_check_path  = var.collector_api_health_check_path
-  network_mode               = var.collector_api_network_mode
-  task_compatibilities       = var.collector_api_task_compatibilities
-  launch_type                = var.collector_api_launch_type
-  alb_listener               = module.public_alb.alb_listener
-  has_alb                    = true
-  alb_listener_tg            = var.collector_api_tg
-  alb_listener_port          = 80
-  alb_listener_protocol      = "HTTP"
-  alb_listener_target_type   = "ip"
-  alb_listener_arn           = module.public_alb.alb_listener_http_tcp_arn
-  alb_listener_rule_priority = 1
-  alb_listener_rule_type     = "forward"
-  alb_service_tg_paths       = var.collector_api_tg_paths
-  enable_autoscaling         = true
-  autoscaling_name           = "${var.collector_api_name}_scaling"
-  autoscaling_settings = {
-    max_capacity       = 4
-    min_capacity       = 2
-    target_cpu_value   = 60
-    scale_in_cooldown  = 60
-    scale_out_cooldown = 900
-  }
 }
 
 ################################################################################
@@ -392,10 +186,10 @@ resource "aws_s3_bucket_acl" "transactions_bucket_acl" {
 ################################################################################
 ################################################################################
 ################################################################################
+# data kinesis stream
 resource "aws_kinesis_stream" "transactions_stream" {
   name             = var.kinesis_stream_name
   retention_period = 168
-
   shard_level_metrics = [
     "IncomingBytes",
     "IteratorAgeMilliseconds",
@@ -405,47 +199,31 @@ resource "aws_kinesis_stream" "transactions_stream" {
     "ReadProvisionedThroughputExceeded",
     "WriteProvisionedThroughputExceeded"
   ]
-
   encryption_type = "NONE"
-
   stream_mode_details {
     stream_mode = "ON_DEMAND"
   }
 }
 
+# firehose kinesis stream
 resource "aws_kinesis_firehose_delivery_stream" "transactions_s3_stream" {
   name        = var.kinesis_firehose_delivery_stream_name
   destination = "extended_s3"
-
   kinesis_source_configuration {
     kinesis_stream_arn = aws_kinesis_stream.transactions_stream.arn
-    role_arn = aws_iam_role.firehose_role.arn
+    role_arn           = aws_iam_role.firehose_role.arn
   }
   extended_s3_configuration {
     buffer_interval = 60
     buffer_size     = 1
     role_arn        = aws_iam_role.firehose_role.arn
     bucket_arn      = aws_s3_bucket.transactions_bucket.arn
-
-    # processing_configuration {
-    #   enabled = "true"
-
-    #   processors {
-    #     type = "Lambda"
-
-    #     parameters {
-    #       parameter_name  = "LambdaArn"
-    #       parameter_value = "${aws_lambda_function.lambda_processor.arn}:$LATEST"
-    #     }
-    #   }
-    # }
   }
 }
 
-#Define a policy which will allow Kinesis Data Firehose to Assume an IAM Role
+# Define a policy which will allow Kinesis Data Firehose to Assume an IAM Role
 resource "aws_iam_role" "firehose_role" {
-  name = "transactions_firehose_role"
-
+  name               = "transactions_firehose_role"
   assume_role_policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -463,7 +241,7 @@ resource "aws_iam_role" "firehose_role" {
 EOF
 }
 
-#Define a policy which will allow Kinesis Data Firehose to access your S3 bucket
+# Define a policy which will allow Kinesis Data Firehose to access your S3 bucket
 data "aws_iam_policy_document" "kinesis_firehose_access_bucket_assume_policy" {
   statement {
     sid    = ""
@@ -483,7 +261,7 @@ data "aws_iam_policy_document" "kinesis_firehose_access_bucket_assume_policy" {
   }
 }
 
-#attach s3 bucket access policy
+# attach s3 bucket access policy
 resource "aws_iam_role_policy" "kinesis_firehose_access_bucket_policy" {
   name   = "kinesis_firehose_access_bucket_policy"
   role   = aws_iam_role.firehose_role.name
@@ -525,6 +303,7 @@ resource "aws_iam_role_policy" "kinesis_firehose_access_data_stream_policy" {
 # Transactions Anomaly Detector
 module "detect_anomaly_transactions" {
   source = "terraform-aws-modules/lambda/aws"
+  version = "3.3.1"
 
   function_name = "detect_transactions_anomalies"
   description   = "Detect new transaction anomaly"
@@ -545,13 +324,16 @@ module "detect_anomaly_transactions" {
     kinesis = {
       event_source_arn  = aws_kinesis_stream.transactions_stream.arn
       starting_position = "LATEST"
-      filter_criteria = {
-        pattern = jsonencode({
-          data : {
-            amount : [{ numeric : [">=", 1000] }]
-          }
-        })
-      }
+      batch_size        = 10
+      maximum_batching_window_in_seconds = 60
+      # TODO: make filter criteria to work and invoke lambda only on the following specific case
+      # filter_criteria = {
+      #   pattern = jsonencode({
+      #     data : {
+      #       amount : [{ numeric : [">", 1000] }]
+      #     }
+      #   })
+      # }
     }
   }
 
@@ -569,11 +351,16 @@ module "detect_anomaly_transactions" {
   attach_policy_statements = true
   policy_statements = {
     secrets_manager_get_value = {
-      effect    = "Allow",
-      actions   = ["secretsmanager:GetSecretValue"],
-      resources = [aws_secretsmanager_secret.collector_database_password_secret.arn, aws_secretsmanager_secret.collector_database_username_secret.arn]
+      effect  = "Allow",
+      actions = ["secretsmanager:GetSecretValue"],
+      resources = [
+        aws_secretsmanager_secret.db_collector_password_secret_manager.arn,
+        aws_secretsmanager_secret.db_collector_username_secret_manager.arn,
+        aws_secretsmanager_secret.sendgrid_apikey_secret_manager.arn
+      ]
     }
   }
+
   attach_policies    = true
   number_of_policies = 1
   policies = [
@@ -582,11 +369,434 @@ module "detect_anomaly_transactions" {
 
   depends_on = [module.collector_database]
 
+  # TODO: get POSTGRES_USER / POSTGRES_PASSWORD / SENDGRID_API_KEY from aws_secretsmanager_secret
   environment_variables = {
     POSTGRES_HOST     = module.collector_database.db_instance_address,
     POSTGRES_PORT     = module.collector_database.db_instance_port,
     POSTGRES_DB       = module.collector_database.db_instance_name,
-    POSTGRES_USER     = aws_secretsmanager_secret.collector_database_username_secret.arn,
-    POSTGRES_PASSWORD = aws_secretsmanager_secret.collector_database_password_secret.arn,
+    POSTGRES_USER     = var.collector_database_username,
+    POSTGRES_PASSWORD = var.collector_database_password,
+    SENDGRID_API_KEY  = var.sendgrid_apikey,
+    SENDER_EMAIL      = var.sendgrid_sender_email,
+    RECEIVER_EMAIL    = var.sendgrid_receiver_email
   }
+}
+
+################################################################################
+# HELPER Lambdas
+################################################################################
+module "run_db_migrations" {
+  source = "terraform-aws-modules/lambda/aws"
+
+  function_name = "run_db_migrations"
+  description   = "Run database migrations"
+  handler       = "index.handler"
+  runtime       = "nodejs14.x"
+  publish       = true
+  timeout       = 60
+
+  source_path = "../../backend/serverless/helper/database/runMigrations"
+
+  store_on_s3 = true
+  s3_bucket   = "bucket-with-lambda-builds"
+
+  vpc_subnet_ids         = module.networking.private_subnet_ids
+  vpc_security_group_ids = [module.private_vpc_sg.security_group_id]
+  attach_network_policy  = true
+
+  attach_policy_statements = true
+  policy_statements = {
+    secrets_manager_get_value = {
+      effect  = "Allow",
+      actions = ["secretsmanager:GetSecretValue"],
+      resources = [
+        aws_secretsmanager_secret.db_collector_password_secret_manager.arn,
+        aws_secretsmanager_secret.db_collector_username_secret_manager.arn,
+        aws_secretsmanager_secret.sendgrid_apikey_secret_manager.arn
+      ]
+    }
+  }
+
+  allowed_triggers = {
+    AllowExecutionFromAPIGateway = {
+      service    = "apigateway"
+      source_arn = "${aws_api_gateway_rest_api.main_api_gw.execution_arn}/*/*/*"
+    }
+  }
+
+  attach_dead_letter_policy = false
+
+  depends_on = [module.collector_database]
+
+  # TODO: get POSTGRES_USER / POSTGRES_PASSWORD / SENDGRID_API_KEY from aws_secretsmanager_secret
+  environment_variables = {
+    POSTGRES_HOST     = module.collector_database.db_instance_address,
+    POSTGRES_PORT     = module.collector_database.db_instance_port,
+    POSTGRES_DB       = module.collector_database.db_instance_name,
+    POSTGRES_USER     = var.collector_database_username,
+    POSTGRES_PASSWORD = var.collector_database_password
+  }
+}
+
+################################################################################
+# AUTH Lambdas
+################################################################################
+module "basic_auth" {
+  source = "terraform-aws-modules/lambda/aws"
+
+  function_name = "basic_auth"
+  description   = "Verifies basic authentication"
+  handler       = "index.handler"
+  runtime       = "nodejs14.x"
+  publish       = true
+
+  source_path = "../../backend/serverless/auth/verifyBasicAuth"
+
+  store_on_s3 = true
+  s3_bucket   = "bucket-with-lambda-builds"
+
+  vpc_subnet_ids         = module.networking.private_subnet_ids
+  vpc_security_group_ids = [module.private_vpc_sg.security_group_id]
+  attach_network_policy  = true
+
+  allowed_triggers = {
+    AllowExecutionFromAPIGateway = {
+      service    = "apigateway"
+      source_arn = "${aws_api_gateway_rest_api.main_api_gw.execution_arn}/*/*/*"
+    }
+  }
+
+  attach_dead_letter_policy = false
+
+  environment_variables = {
+    BASIC_AUTH_USERNAME = var.basic_auth_username
+    BASIC_AUTH_PASSWORD = var.basic_auth_password
+  }
+}
+
+################################################################################
+################################################################################
+################################################################################
+# API GW CONFIGURATION
+################################################################################
+################################################################################
+################################################################################
+# API Gateway
+resource "aws_api_gateway_rest_api" "main_api_gw" {
+  name           = "main-GW"
+  api_key_source = "HEADER"
+  tags = {
+    Name = "http-apigateway"
+  }
+}
+
+# given API Gateway the requisite permissions in order to write logs to CloudWatch
+resource "aws_api_gateway_account" "api_gw_account" {
+  cloudwatch_role_arn = aws_iam_role.api_gw_cloudwatch_invocation_role.arn
+}
+
+resource "aws_iam_role" "api_gw_cloudwatch_invocation_role" {
+  name               = "api_gw_cloudwatch_invocation"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "apigateway.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_iam_role_policy" "api_gw_cloudwatch_invocation_role" {
+  name = "api_gw_cloudwatch_invocation_policy"
+  role = aws_iam_role.api_gw_cloudwatch_invocation_role.id
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams",
+                "logs:PutLogEvents",
+                "logs:GetLogEvents",
+                "logs:FilterLogEvents"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+EOF
+}
+
+# Policy to be able API_GW put records on Kinesis
+resource "aws_iam_role" "api_gw_kinesis_invocation_role" {
+  name               = "api_gw_kinesis_invocation_role"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "apigateway.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+data "aws_iam_policy_document" "api_gw_kinesis_invocation_role" {
+  statement {
+    sid = "PutRecord"
+    actions = [
+      "kinesis:PutRecord",
+    ]
+    effect = "Allow"
+    resources = [
+      aws_kinesis_stream.transactions_stream.arn
+    ]
+  }
+
+  statement {
+    sid = "PutRecords"
+    actions = [
+      "kinesis:PutRecords"
+    ]
+    effect = "Allow"
+    resources = [
+      aws_kinesis_stream.transactions_stream.arn
+    ]
+  }
+}
+
+# attach api gw kinesis access policy
+resource "aws_iam_role_policy" "api_gw_kinesis_invocation_role" {
+  name   = "api_gw_kinesis_invocation_policy"
+  role   = aws_iam_role.api_gw_kinesis_invocation_role.name
+  policy = data.aws_iam_policy_document.api_gw_kinesis_invocation_role.json
+}
+
+resource "aws_api_gateway_deployment" "api_gw_deployment" {
+  rest_api_id = aws_api_gateway_rest_api.main_api_gw.id
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.databases.id,
+      aws_api_gateway_resource.migrations.id,
+      aws_api_gateway_method.run_migrations.id,
+      aws_api_gateway_integration.run_migrations_integration.id,
+      aws_api_gateway_resource.collector.id,
+      aws_api_gateway_resource.transactions.id,
+      aws_api_gateway_method.create_transactions.id,
+      aws_api_gateway_integration.create_transactions_integration.id,
+    ]))
+  }
+  # use depends_on to ensure that the deployment occurs after all dependencies are created
+  depends_on = [
+    aws_api_gateway_integration.run_migrations_integration,
+    aws_api_gateway_method.run_migrations,
+    aws_api_gateway_integration.create_transactions_integration,
+    aws_api_gateway_method.create_transactions
+  ]
+}
+
+resource "aws_api_gateway_stage" "api_gw_prod_stage" {
+  rest_api_id   = aws_api_gateway_rest_api.main_api_gw.id
+  stage_name    = "prod"
+  deployment_id = aws_api_gateway_deployment.api_gw_deployment.id
+  # Bug in terraform-aws-provider with perpetual diff
+  # lifecycle {
+  #   ignore_changes = [deployment_id]
+  # }
+}
+
+resource "aws_api_gateway_usage_plan" "api_gw_usage_plan" {
+  name = "api_gw_usage_plan"
+  api_stages {
+    api_id = aws_api_gateway_rest_api.main_api_gw.id
+    stage  = aws_api_gateway_stage.api_gw_prod_stage.stage_name
+  }
+}
+
+resource "aws_api_gateway_usage_plan_key" "api_gw_usage_plan_key" {
+  key_id        = aws_api_gateway_api_key.api_gw_prod_api_key.id
+  key_type      = "API_KEY"
+  usage_plan_id = aws_api_gateway_usage_plan.api_gw_usage_plan.id
+}
+
+resource "aws_api_gateway_api_key" "api_gw_prod_api_key" {
+  name        = "api_gw_prod_api_key"
+  description = "api key used to make requests to api"
+  enabled     = true
+}
+
+# /databases/migrations
+resource "aws_api_gateway_resource" "databases" {
+  path_part   = "databases"
+  parent_id   = aws_api_gateway_rest_api.main_api_gw.root_resource_id
+  rest_api_id = aws_api_gateway_rest_api.main_api_gw.id
+}
+
+resource "aws_api_gateway_resource" "migrations" {
+  path_part   = "migrations"
+  parent_id   = aws_api_gateway_resource.databases.id
+  rest_api_id = aws_api_gateway_rest_api.main_api_gw.id
+}
+
+resource "aws_api_gateway_method" "run_migrations" {
+  rest_api_id      = aws_api_gateway_rest_api.main_api_gw.id
+  resource_id      = aws_api_gateway_resource.migrations.id
+  http_method      = "POST"
+  api_key_required = true
+  authorization    = "CUSTOM"
+  authorizer_id    = aws_api_gateway_authorizer.basic_auth.id
+}
+
+resource "aws_api_gateway_integration" "run_migrations_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.main_api_gw.id
+  resource_id             = aws_api_gateway_resource.migrations.id
+  http_method             = aws_api_gateway_method.run_migrations.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  connection_type         = "INTERNET"
+  timeout_milliseconds    = 12000
+  uri                     = module.run_db_migrations.lambda_function_invoke_arn
+}
+
+# /collector/transactions
+resource "aws_api_gateway_resource" "collector" {
+  path_part   = "collector"
+  parent_id   = aws_api_gateway_rest_api.main_api_gw.root_resource_id
+  rest_api_id = aws_api_gateway_rest_api.main_api_gw.id
+}
+
+resource "aws_api_gateway_resource" "transactions" {
+  path_part   = "transactions"
+  parent_id   = aws_api_gateway_resource.collector.id
+  rest_api_id = aws_api_gateway_rest_api.main_api_gw.id
+}
+
+resource "aws_api_gateway_method" "create_transactions" {
+  rest_api_id      = aws_api_gateway_rest_api.main_api_gw.id
+  resource_id      = aws_api_gateway_resource.transactions.id
+  http_method      = "POST"
+  api_key_required = true
+  authorization    = "NONE"
+}
+
+resource "aws_api_gateway_method_response" "create_transactions_200" {
+  rest_api_id = aws_api_gateway_rest_api.main_api_gw.id
+  resource_id = aws_api_gateway_resource.transactions.id
+  http_method = aws_api_gateway_method.create_transactions.http_method
+  status_code = "200"
+  response_models = {
+    "application/json" = "Empty"
+  }
+  response_parameters = {}
+}
+
+resource "aws_api_gateway_integration" "create_transactions_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.main_api_gw.id
+  resource_id             = aws_api_gateway_resource.transactions.id
+  http_method             = aws_api_gateway_method.create_transactions.http_method
+  integration_http_method = "POST"
+  type                    = "AWS"
+  timeout_milliseconds    = 12000
+
+  uri = format(
+    "arn:%s:apigateway:%s:kinesis:action/PutRecords",
+    data.aws_partition.current.partition,
+    data.aws_region.current.name
+  )
+  connection_type = "INTERNET"
+  credentials     = aws_iam_role.api_gw_kinesis_invocation_role.arn
+  request_parameters = {
+    "integration.request.header.Content-Type" = "'application/x-amz-json-1.1'"
+  }
+  request_templates = {
+    "application/json" = <<EOT
+    {
+      "StreamName": "${var.kinesis_stream_name}",
+      "Records": [
+        #foreach($elem in $input.path('$.records'))
+        #set($event = "{
+          ""trxId"":""$elem.trxId"",
+          ""amount"":""$elem.amount"",
+          ""senderId"":""$elem.senderId"",
+          ""receiverId"":""$elem.receiverId"",
+          ""senderIban"":""$elem.senderIban"",
+          ""receiverIban"":""$elem.receiverIban"",
+          ""senderBankId"":""$elem.senderBankId"",
+          ""receiverBankId"":""$elem.receiverBankId"",
+          ""transactionDate"":""$elem.transactionDate""
+        }")
+        {
+          "Data": "$util.base64Encode($event)",
+          "PartitionKey": "$elem.trxId"
+        }#if($foreach.hasNext),#end
+        #end
+      ]
+    }
+    EOT
+  }
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "create_transactions" {
+  rest_api_id         = aws_api_gateway_rest_api.main_api_gw.id
+  resource_id         = aws_api_gateway_resource.transactions.id
+  http_method         = aws_api_gateway_method.create_transactions.http_method
+  status_code         = aws_api_gateway_method_response.create_transactions_200.status_code
+  response_parameters = {}
+}
+
+# Policy to be able API_GW invoke lambda
+resource "aws_iam_role" "api_gw_lambda_invocation_role" {
+  name = "api_gateway_auth_invocation"
+  path = "/"
+
+  assume_role_policy = file("./common/templates/policies/api_gateway_auth_invocation.json.tpl")
+}
+
+resource "aws_iam_role_policy" "basic_auth_invocation_policy" {
+  name = "basic_auth_gw_lambda_invocation_policy"
+  role = aws_iam_role.api_gw_lambda_invocation_role.id
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "lambda:InvokeFunction",
+      "Effect": "Allow",
+      "Resource": "${module.basic_auth.lambda_function_arn}"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_api_gateway_authorizer" "basic_auth" {
+  name                   = "BasicAuthorizer"
+  rest_api_id            = aws_api_gateway_rest_api.main_api_gw.id
+  type                   = "REQUEST"
+  identity_source        = "method.request.header.Authorization"
+  authorizer_uri         = module.basic_auth.lambda_function_invoke_arn
+  authorizer_credentials = aws_iam_role.api_gw_lambda_invocation_role.arn
 }

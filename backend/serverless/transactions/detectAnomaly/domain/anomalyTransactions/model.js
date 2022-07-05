@@ -16,7 +16,6 @@ class AnomalyTransaction {
     this.trxId = trxId;
     this.amount = amount;
     this.senderId = senderId;
-    this.senderId = senderId;
     this.receiverId = receiverId;
     this.senderIban = senderIban;
     this.receiverIban = receiverIban;

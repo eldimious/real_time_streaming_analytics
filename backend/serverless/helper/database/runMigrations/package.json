@@ -1,0 +1,25 @@
+{
+  "name": "runmigrations",
+  "version": "1.0.0",
+  "description": "Lambda used to run migration",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Dimos Botsaris <botsaris.d@gmail.com>",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.1167.0",
+    "dotenv": "^16.0.0",
+    "pg": "^8.7.3",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.21.2",
+    "throw-http-errors": "^4.0.1",
+    "validator": "^13.7.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.9.0",
+    "eslint-config-airbnb": "^19.0.4",
+    "eslint-plugin-import": "^2.25.4"
+  }
+}
