@@ -36,6 +36,7 @@ Headers:
 {
     "x-api-key": "${api_gateway_api_key}"
 }
+```
 
 Body Params:
 ```json
