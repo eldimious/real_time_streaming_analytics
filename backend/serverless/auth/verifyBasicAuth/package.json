@@ -1,0 +1,14 @@
+{
+  "name": "verifyapikey",
+  "version": "1.0.0",
+  "description": "Verifies if lambda has the correct api key header",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Dimos Botsaris <botsaris.d@gmail.com>",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^10.0.0"
+  }
+}

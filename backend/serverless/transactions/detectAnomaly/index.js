@@ -3,16 +3,19 @@ const databaseContainer = require('./data/infrastructure/db');
 const {
   database: databaseConfig,
 } = require('./configuration');
+const dispatcherRepositoryContainer = require('./data/repositories/dispatcher');
 const anomalyTransactionsRepositoryContainer = require('./data/repositories/anomalyTransactions');
 const anomalyTransactionsDataStoreContainer = require('./data/repositories/anomalyTransactions/dataStore');
 const anomalyTransactionsServiceContainer = require('./domain/anomalyTransactions/service');
 
 const db = databaseContainer.init({ databaseUri: databaseConfig.uri });
+const dispatcherRepository = dispatcherRepositoryContainer.init();
 const anomalyTransactionsRepository = anomalyTransactionsRepositoryContainer.init({
   anomalyTransactionsDataStore: anomalyTransactionsDataStoreContainer.init(db.schemas),
 });
 const anomalyTransactionsService = anomalyTransactionsServiceContainer.init({
   anomalyTransactionsRepository,
+  dispatcherRepository,
 });
 
 async function loadDatabase() {
@@ -34,10 +37,10 @@ exports.handler = async function detectAnomaly(event, context, callback) {
       }
     }
     await Promise.all(event.Records.map(async (record) => {
-      const payload = Buffer.from(record.kinesis.data, 'base64').toString('ascii');
+      const payload = Buffer.from(record.kinesis.data, 'base64').toString('utf8');
       console.log('Decoded payload:', payload);
       const trx = JSON.parse(payload);
-      console.log('msg:', trx);
+      console.log('event:', trx);
       await anomalyTransactionsService.detectTransactionAnomaly(trx);
     }));
     const response = {

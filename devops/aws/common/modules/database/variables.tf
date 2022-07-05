@@ -75,7 +75,7 @@ variable "database_engine_major_engine_version" {
 variable "database_instance_class" {
   description = "DB instance class"
   type        = string
-  default     = "db.t3.small"
+  default     = "db.t3.micro"
 }
 
 variable "database_maintenance_window" {

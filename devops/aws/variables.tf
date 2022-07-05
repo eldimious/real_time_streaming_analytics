@@ -87,7 +87,7 @@ variable "create_alb" {
 ################################################################################
 variable "project" {
   description = "Project name"
-  default     = "collector_ecs_fargate"
+  default     = "collector_project"
 }
 
 variable "environment" {
@@ -215,7 +215,6 @@ variable "discovery_routing_policy" {
 ################################################################################
 # Database Configuration
 ################################################################################
-# collector DB
 variable "collector_database_username" {
   description = "The username for the collector DB master"
   type        = string
@@ -239,6 +238,9 @@ variable "collector_monitoring_role_name" {
   default     = "collectorDatabaseMonitoringRole"
 }
 
+################################################################################
+# Kinesis Configuration
+################################################################################
 variable "kinesis_stream_name" {
   description = "kinesis stream name for transactions"
   type        = string
@@ -249,4 +251,40 @@ variable "kinesis_firehose_delivery_stream_name" {
   description = "kinesis firehose delivery stream name for transactions"
   type        = string
   default     = "transactions_s3_delivery_stream"
+}
+
+################################################################################
+# Sendgrid Configuration
+################################################################################
+variable "sendgrid_apikey" {
+  description = "The api key for sendgrid api"
+  type        = string
+  sensitive   = true
+}
+
+variable "sendgrid_sender_email" {
+  description = "The sender emailfor sendgrid api"
+  type        = string
+  sensitive   = true
+}
+
+variable "sendgrid_receiver_email" {
+  description = "The receiver emailfor sendgrid api"
+  type        = string
+  sensitive   = true
+}
+
+################################################################################
+# Auth Configuration
+################################################################################
+variable "basic_auth_username" {
+  description = "The basic auth username"
+  type        = string
+  sensitive   = true
+}
+
+variable "basic_auth_password" {
+  description = "The basic auth password"
+  type        = string
+  sensitive   = true
 }

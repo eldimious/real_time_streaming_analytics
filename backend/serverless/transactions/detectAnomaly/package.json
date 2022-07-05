@@ -9,6 +9,7 @@
   "author": "Dimos Botsaris <botsaris.d@gmail.com>",
   "license": "ISC",
   "dependencies": {
+    "@sendgrid/mail": "^7.7.0",
     "aws-sdk": "^2.1164.0",
     "bignumber.js": "^9.0.2",
     "dotenv": "^16.0.1",

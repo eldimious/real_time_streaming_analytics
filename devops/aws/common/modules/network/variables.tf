@@ -9,12 +9,10 @@ variable "region" {
 ################################################################################
 variable "project" {
   description = "Project name"
-  default     = "ecs_fargate_ms"
 }
 
 variable "environment" {
   description = "Indicate the environment"
-  default     = "dev"
 }
 
 # vpc
@@ -25,7 +23,6 @@ variable "create_vpc" {
 
 variable "vpc_name" {
   description = "The name of the VPC. Other names will result from this."
-  default     = "ms-vpc"
 }
 
 variable "create_igw" {

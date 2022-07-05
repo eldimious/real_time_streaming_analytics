@@ -4,11 +4,6 @@ const config = {
   database: {
     uri: `postgres://${process.env.POSTGRES_USER}:${process.env.POSTGRES_PASSWORD}@${process.env.POSTGRES_HOST}:${process.env.POSTGRES_PORT}/${process.env.POSTGRES_DB}`,
   },
-  sendgrid: {
-    apiKey: process.env.SENDGRID_API_KEY,
-    senderEmail: process.env.SENDER_EMAIL,
-    receiverEmail: process.env.RECEIVER_EMAIL,
-  },
 };
 
 module.exports = config;
@@ -27,11 +22,6 @@ module.exports = config;
 //     return {
 //       database: {
 //         uri: `postgres://${dbUser}:${dbPass}@${process.env.POSTGRES_HOST}:${process.env.POSTGRES_PORT}/${process.env.POSTGRES_DB}`,
-//       },
-//       sendgrid: {
-//         apiKey: sendgridApiKey,
-//         senderEmail: process.env.SENDER_EMAIL,
-//         receiverEmail: process.env.RECEIVER_EMAIL,
 //       },
 //     };
 //   } catch (err) {
