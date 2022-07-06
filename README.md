@@ -1,6 +1,7 @@
 # real_time_streaming_analytics
 
 In this repository, we look at how we can use managed services such as Amazon Kinesis to handle our incoming data analytics streams from our sources while AWS handles the undifferentiated heavy lifting of managing the infrastructure.
+Our purpose is to create a real time streaming service, where we produce payment transactions, which are pushed to AWS Kinesis data stream, are stored into AWS S3 for cold storage via AWS Kinesis Firehose, and a AWS Lambda detects anomalies in payment transactions (in payment amount > 1000) stores these anomalies to a database and notifies user via email.
 
 ## Architecture Flow
 The flow pipeline for our microservice ecosystem is the ![following](./ArchitectureFlow.png)
