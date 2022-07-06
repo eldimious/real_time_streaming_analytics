@@ -51,13 +51,13 @@ module "networking" {
 # VPC Flow Logs IAM
 resource "aws_iam_role" "vpc_flow_cloudwatch_logs_role" {
   name               = "collector-vpc-flow-cloudwatch-logs-role"
-  assume_role_policy = file("./common/templates/policies/vpc_flow_cloudwatch_logs_role.json.tpl")
+  assume_role_policy = file("./common/templates/policies/vpc/vpc_flow_cloudwatch_logs_role.json.tpl")
 }
 
-resource "aws_iam_role_policy" "vpc_flow_cloudwatch_logs_policy" {
+resource "aws_iam_role_policy" "allow_vpc_flow_cloudwatch_logs_policy" {
   name   = "collector-vpc-flow-cloudwatch-logs-policy"
   role   = aws_iam_role.vpc_flow_cloudwatch_logs_role.id
-  policy = file("./common/templates/policies/vpc_flow_cloudwatch_logs_policy.json.tpl")
+  policy = file("./common/templates/policies/vpc/allow_vpc_flow_cloudwatch_logs_policy.json.tpl")
 }
 
 # VPC Flows
@@ -121,7 +121,6 @@ module "private_vpc_sg" {
   egress_protocol          = "-1"
 }
 
-
 ################################################################################
 ################################################################################
 ################################################################################
@@ -130,7 +129,6 @@ module "private_vpc_sg" {
 ################################################################################
 ################################################################################
 # Databases Secrets
-# https://www.sufle.io/blog/keeping-secrets-as-secret-on-amazon-ecs-using-terraform
 resource "aws_secretsmanager_secret" "db_collector_password_secret_manager" {
   name                    = "db_collector_master_password"
   recovery_window_in_days = 0
@@ -223,7 +221,7 @@ resource "aws_kinesis_firehose_delivery_stream" "transactions_s3_stream" {
 
 # Define a policy which will allow Kinesis Data Firehose to Assume an IAM Role
 resource "aws_iam_role" "firehose_role" {
-  name               = "transactions_firehose_role"
+  name               = "firehose_role"
   assume_role_policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -242,7 +240,7 @@ EOF
 }
 
 # Define a policy which will allow Kinesis Data Firehose to access your S3 bucket
-data "aws_iam_policy_document" "kinesis_firehose_access_bucket_assume_policy" {
+data "aws_iam_policy_document" "allow_firehose_access_bucket_policy" {
   statement {
     sid    = ""
     effect = "Allow"
@@ -261,15 +259,8 @@ data "aws_iam_policy_document" "kinesis_firehose_access_bucket_assume_policy" {
   }
 }
 
-# attach s3 bucket access policy
-resource "aws_iam_role_policy" "kinesis_firehose_access_bucket_policy" {
-  name   = "kinesis_firehose_access_bucket_policy"
-  role   = aws_iam_role.firehose_role.name
-  policy = data.aws_iam_policy_document.kinesis_firehose_access_bucket_assume_policy.json
-}
-
 # Define a policy which will allow Kinesis Data Firehose to access your S3 bucket
-data "aws_iam_policy_document" "kinesis_firehose_access_data_stream_assume_policy" {
+data "aws_iam_policy_document" "allow_firehose_access_data_stream_policy" {
   statement {
     sid    = ""
     effect = "Allow"
@@ -285,11 +276,18 @@ data "aws_iam_policy_document" "kinesis_firehose_access_data_stream_assume_polic
   }
 }
 
-# attach data stream access policy
-resource "aws_iam_role_policy" "kinesis_firehose_access_data_stream_policy" {
-  name   = "kinesis_firehose_access_data_stream_policy"
+# attach s3 bucket access policy
+resource "aws_iam_role_policy" "allow_firehose_access_bucket_policy" {
+  name   = "allow_firehose_access_bucket_policy"
   role   = aws_iam_role.firehose_role.name
-  policy = data.aws_iam_policy_document.kinesis_firehose_access_data_stream_assume_policy.json
+  policy = data.aws_iam_policy_document.allow_firehose_access_bucket_policy.json
+}
+
+# attach data stream access policy
+resource "aws_iam_role_policy" "allow_firehose_access_data_stream_policy" {
+  name   = "allow_firehose_access_data_stream_policy"
+  role   = aws_iam_role.firehose_role.name
+  policy = data.aws_iam_policy_document.allow_firehose_access_data_stream_policy.json
 }
 
 ################################################################################
@@ -302,7 +300,7 @@ resource "aws_iam_role_policy" "kinesis_firehose_access_data_stream_policy" {
 ################################################################################
 # Transactions Anomaly Detector
 module "detect_anomaly_transactions" {
-  source = "terraform-aws-modules/lambda/aws"
+  source  = "terraform-aws-modules/lambda/aws"
   version = "3.3.1"
 
   function_name = "detect_transactions_anomalies"
@@ -322,9 +320,9 @@ module "detect_anomaly_transactions" {
 
   event_source_mapping = {
     kinesis = {
-      event_source_arn  = aws_kinesis_stream.transactions_stream.arn
-      starting_position = "LATEST"
-      batch_size        = 10
+      event_source_arn                   = aws_kinesis_stream.transactions_stream.arn
+      starting_position                  = "LATEST"
+      batch_size                         = 10
       maximum_batching_window_in_seconds = 60
       # TODO: make filter criteria to work and invoke lambda only on the following specific case
       # filter_criteria = {
@@ -492,11 +490,11 @@ resource "aws_api_gateway_rest_api" "main_api_gw" {
 
 # given API Gateway the requisite permissions in order to write logs to CloudWatch
 resource "aws_api_gateway_account" "api_gw_account" {
-  cloudwatch_role_arn = aws_iam_role.api_gw_cloudwatch_invocation_role.arn
+  cloudwatch_role_arn = aws_iam_role.api_gw_role.arn
 }
 
-resource "aws_iam_role" "api_gw_cloudwatch_invocation_role" {
-  name               = "api_gw_cloudwatch_invocation"
+resource "aws_iam_role" "api_gw_role" {
+  name               = "api_gw_role"
   assume_role_policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -514,10 +512,9 @@ resource "aws_iam_role" "api_gw_cloudwatch_invocation_role" {
 EOF
 }
 
-resource "aws_iam_role_policy" "api_gw_cloudwatch_invocation_role" {
-  name = "api_gw_cloudwatch_invocation_policy"
-  role = aws_iam_role.api_gw_cloudwatch_invocation_role.id
-
+resource "aws_iam_role_policy" "allow_api_gw_invoke_cloudwatch_policy" {
+  name   = "allow_api_gw_invoke_cloudwatch_policy"
+  role   = aws_iam_role.api_gw_role.id
   policy = <<EOF
 {
     "Version": "2012-10-17",
@@ -540,27 +537,7 @@ resource "aws_iam_role_policy" "api_gw_cloudwatch_invocation_role" {
 EOF
 }
 
-# Policy to be able API_GW put records on Kinesis
-resource "aws_iam_role" "api_gw_kinesis_invocation_role" {
-  name               = "api_gw_kinesis_invocation_role"
-  assume_role_policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "",
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "apigateway.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-EOF
-}
-
-data "aws_iam_policy_document" "api_gw_kinesis_invocation_role" {
+data "aws_iam_policy_document" "allow_api_gw_invoke_kinesis_policy" {
   statement {
     sid = "PutRecord"
     actions = [
@@ -584,11 +561,30 @@ data "aws_iam_policy_document" "api_gw_kinesis_invocation_role" {
   }
 }
 
-# attach api gw kinesis access policy
-resource "aws_iam_role_policy" "api_gw_kinesis_invocation_role" {
+# attach api gw kinesis access policy to aws_iam_role.api_gw_role
+resource "aws_iam_role_policy" "allow_api_gw_invoke_kinesis_policy" {
   name   = "api_gw_kinesis_invocation_policy"
-  role   = aws_iam_role.api_gw_kinesis_invocation_role.name
-  policy = data.aws_iam_policy_document.api_gw_kinesis_invocation_role.json
+  role   = aws_iam_role.api_gw_role.name
+  policy = data.aws_iam_policy_document.allow_api_gw_invoke_kinesis_policy.json
+}
+
+# attach api gw basic auth lambda invocation policy to aws_iam_role.api_gw_role
+resource "aws_iam_role_policy" "allow_api_gw_invoke_basic_auth_lambda_policy" {
+  name = "allow_api_gw_invoke_basic_auth_lambda_policy"
+  role = aws_iam_role.api_gw_role.id
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "lambda:InvokeFunction",
+      "Effect": "Allow",
+      "Resource": "${module.basic_auth.lambda_function_arn}"
+    }
+  ]
+}
+EOF
 }
 
 resource "aws_api_gateway_deployment" "api_gw_deployment" {
@@ -723,7 +719,7 @@ resource "aws_api_gateway_integration" "create_transactions_integration" {
     data.aws_region.current.name
   )
   connection_type = "INTERNET"
-  credentials     = aws_iam_role.api_gw_kinesis_invocation_role.arn
+  credentials     = aws_iam_role.api_gw_role.arn
   request_parameters = {
     "integration.request.header.Content-Type" = "'application/x-amz-json-1.1'"
   }
@@ -766,37 +762,11 @@ resource "aws_api_gateway_integration_response" "create_transactions" {
   response_parameters = {}
 }
 
-# Policy to be able API_GW invoke lambda
-resource "aws_iam_role" "api_gw_lambda_invocation_role" {
-  name = "api_gateway_auth_invocation"
-  path = "/"
-
-  assume_role_policy = file("./common/templates/policies/api_gateway_auth_invocation.json.tpl")
-}
-
-resource "aws_iam_role_policy" "basic_auth_invocation_policy" {
-  name = "basic_auth_gw_lambda_invocation_policy"
-  role = aws_iam_role.api_gw_lambda_invocation_role.id
-
-  policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Action": "lambda:InvokeFunction",
-      "Effect": "Allow",
-      "Resource": "${module.basic_auth.lambda_function_arn}"
-    }
-  ]
-}
-EOF
-}
-
 resource "aws_api_gateway_authorizer" "basic_auth" {
   name                   = "BasicAuthorizer"
   rest_api_id            = aws_api_gateway_rest_api.main_api_gw.id
   type                   = "REQUEST"
   identity_source        = "method.request.header.Authorization"
   authorizer_uri         = module.basic_auth.lambda_function_invoke_arn
-  authorizer_credentials = aws_iam_role.api_gw_lambda_invocation_role.arn
+  authorizer_credentials = aws_iam_role.api_gw_role.arn
 }
